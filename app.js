@@ -18,6 +18,7 @@ let state = {attempts:[], notes:{}, plans:{}, time:'19:00'};
 try { Object.assign(state, JSON.parse(localStorage.getItem(key)||'{}')); } catch {}
 let view='today', selected=now(), month=selected.slice(0,7), revealed=false, query='';
 function save() {
+  if (window.saveCloudPlanner?.()) return true;
   try { localStorage.setItem(key,JSON.stringify(state)); return true; }
   catch { document.querySelector('#storage-error').textContent='Browser storage is unavailable. Changes are kept in memory for this session.'; return false; }
 }
@@ -118,7 +119,7 @@ function reminderView() {
   <ol class="reminder-steps"><li>In your calendar app, create an event called <strong>DSA practice</strong>.</li><li>Pick your study time, set it to repeat daily, and add a notification at the start.</li><li>Paste the planner link into the event, then save.</li></ol>
   <div class="row"><a href="https://calendar.google.com/" target="_blank" rel="noopener">Open Google Calendar ↗</a><button type="button" data-action="copy-link">Copy planner link</button></div>
   <p id="reminder-status" class="muted" aria-live="polite"></p>
-  <details><summary>Use a calendar file instead</summary><p>The file fills in the daily event and its alert for you. Import it once in your calendar app.</p><label for="time">Study time (IST)</label><input id="time" type="time" required value="${esc(state.time)}"><button data-action="ics">Download calendar file (.ics)</button></details></section><section class="panel"><h2>Data on this browser</h2><p class="muted">Attempts and notes are saved in this browser. Use a backup to transfer your data to another device.</p><div class="row backup-actions"><button type="button" data-action="backup">Export backup</button><button type="button" data-action="import-backup">Import backup</button></div><input type="file" id="backup-file" accept="application/json,.json" hidden><p class="backup-status muted" id="backup-status" role="status"></p></section></div>`;
+  <details><summary>Use a calendar file instead</summary><p>The file fills in the daily event and its alert for you. Import it once in your calendar app.</p><label for="time">Study time (IST)</label><input id="time" type="time" required value="${esc(state.time)}"><button data-action="ics">Download calendar file (.ics)</button></details></section><section class="panel"><h2>Backups</h2><p class="muted">Export a copy of your planner or import an existing backup.</p><div class="row backup-actions"><button type="button" data-action="backup">Export backup</button><button type="button" data-action="import-backup">Import backup</button></div><input type="file" id="backup-file" accept="application/json,.json" hidden><p class="backup-status muted" id="backup-status" role="status"></p></section></div>`;
 }
 function render() {
   document.querySelectorAll('nav button').forEach(b=>{b.classList.toggle('active',b.dataset.view===view);if(b.dataset.view===view)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
@@ -191,7 +192,7 @@ function download(name, data, mime) {
   setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 function plannerLink() {
-  return location.protocol==='https:'?location.origin+location.pathname:'https://dsa-practice-planner.flourishingcrab4.chatgpt.site';
+  return location.protocol==='https:'?location.origin+location.pathname:'https://kishore-raveendran.github.io/dsa-planner/';
 }
 async function copyPlannerLink() {
   const status=document.querySelector('#reminder-status');
@@ -210,7 +211,7 @@ function reminder() {
 }
 document.addEventListener('click',e=>{
   const b=e.target.closest('button'); if(!b)return;
-  if(b.dataset.view){view=b.dataset.view;render();return;}
+  if(b.dataset.view){if(!app.hidden){view=b.dataset.view;render();}return;}
   if(b.dataset.id){openProblem(b.dataset.id,view==='calendar'&&selected<=now()?selected:now());return;}
   if(b.dataset.date){selected=b.dataset.date;render();return;}
   if(b.dataset.month){
@@ -225,7 +226,7 @@ document.addEventListener('click',e=>{
 });
 document.addEventListener('input',e=>{
   const input=e.target;
-  if(input.id==='rough'){state.notes[input.dataset.id]=input.value;dialog.querySelector('#note-status').textContent=save()?'Saved in this browser':'Kept for this session';}
+  if(input.id==='rough'){state.notes[input.dataset.id]=input.value;dialog.querySelector('#note-status').textContent=save()?'Note saved':'Kept for this session';}
   if(input.id==='search'){query=input.value.trim();document.querySelector('#topics').innerHTML=roadmapRows();}
 });
 document.addEventListener('change',async e=>{
