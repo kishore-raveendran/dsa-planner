@@ -16,3 +16,5 @@ textarea{background:var(--paper);font-family:"JetBrains Mono",Consolas,monospace
 .account-panel button{display:block;width:100%;text-align:start}
 .planner-loading{max-width:1120px;margin:auto;padding:28px 24px}
 @media(max-width:700px){#cloud{position:static}.chrome{position:relative}.account-panel{inset-inline:15px;top:100%;width:auto}}
+.month button.missed{background:#562a2e;color:#ffe0e0;border-color:#c46b73}
+.month button.missed.active{outline:2px solid #ffaca5;outline-offset:1px}

@@ -13,18 +13,24 @@ function addDays(day, amount) {
   const date = new Date(day+'T12:00:00'); date.setDate(date.getDate()+amount); return dateKey(date);
 }
 const fmt = (day, options={month:'short',day:'numeric'}) => new Date(day+'T12:00:00').toLocaleDateString('en-IN',options);
-const now = () => dateKey();
+const trackingStart = '2026-11-15';
+const practiceDate = new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'});
+const now = () => {
+  const parts = Object.fromEntries(practiceDate.formatToParts(new Date()).map(({type,value})=>[type,value]));
+  return `${parts.year}-${parts.month}-${parts.day}`;
+};
 let state = {attempts:[], notes:{}, plans:{}, time:'19:00'};
-let view='today', selected=now(), month=selected.slice(0,7), revealed=false, query='';
+let view='today', selected=now(), month=selected.slice(0,7), revealed=false, query='', renderedDay='';
 function save() {
   if (window.saveCloudPlanner?.()) return true;
   try { localStorage.setItem(key,JSON.stringify(state)); return true; }
   catch { document.querySelector('#storage-error').textContent='Browser storage is unavailable. Changes are kept in memory for this session.'; return false; }
 }
 const history = id => state.attempts.filter(a=>a.id===id).sort((a,b)=>a.date.localeCompare(b.date)||a.at-b.at);
-function review(id) {
+function review(id,before) {
   let stage=0, due='';
   for (const a of history(id)) {
+    if (before && a.date>=before) break;
     if (a.result!=='solo') {stage=0;due=addDays(a.date,1);continue;}
     if (due && a.date<due && stage>0) continue;
     due=addDays(a.date,[3,7,14][Math.min(stage,2)]);
@@ -32,18 +38,40 @@ function review(id) {
   }
   return {due,stage};
 }
-function daily(day, completed=[]) {
-  if (state.plans[day]) return state.plans[day];
-  const due=problems.map(p=>({p,...review(p.id)})).filter(r=>r.due && r.due<=day && !history(r.p.id).some(a=>a.date===day))
+const isSolve = a => a.result==='solo'||a.result==='hint';
+const solvedOn = (id,day) => state.attempts.some(a=>a.id===id&&a.date===day&&isSolve(a));
+function buildPlan(day) {
+  const previous = addDays(day,-1);
+  const plan = previous>=trackingStart
+    ? (state.plans[previous] || []).filter(item=>!solvedOn(item.id,previous)).map(item=>({...item,carried:true}))
+    : [];
+  const ids = new Set(plan.map(item=>item.id));
+  const due=problems.map(p=>({p,...review(p.id,day)})).filter(r=>r.due && r.due<=day && !ids.has(r.p.id))
     .sort((a,b)=>a.stage-b.stage||a.due.localeCompare(b.due));
-  const fresh=problems.filter(p=>!history(p.id).length);
-  const plan=[...completed, ...due.slice(0,Math.max(0,3-completed.length)).map(x=>({id:x.p.id,review:true}))];
+  for (const {p} of due.slice(0,Math.max(0,3-plan.length))) {
+    plan.push({id:p.id,review:true});
+    ids.add(p.id);
+  }
+  const fresh=problems.filter(p=>!ids.has(p.id)&&!history(p.id).some(a=>a.date<day));
   const hasHard=()=>plan.some(x=>byId[x.id].level==='H');
   for (const p of fresh) {
     if (plan.length>=3 || (plan.length>=2 && (hasHard() || p.level!=='E' || plan.some(x=>byId[x.id].level!=='E')))) break;
     plan.push({id:p.id,review:false});
   }
-  state.plans[day]=plan; save(); return plan;
+  return plan;
+}
+function ensurePlans(today) {
+  let changed = false;
+  for (let day=trackingStart;day<=today;day=addDays(day,1)) {
+    if (state.plans[day]) continue;
+    state.plans[day] = buildPlan(day);
+    changed = true;
+  }
+  if (changed) save();
+}
+function missedCount(day,today) {
+  if (day<trackingStart||day>=today) return 0;
+  return (state.plans[day] || []).filter(item=>!solvedOn(item.id,day)).length;
 }
 const heading=(label,title,description)=>`<p class="kicker">${label}</p><h1>${title}</h1><p class="muted">${description}</p>`;
 const problemButton=(p)=>`<button class="link" data-id="${p.id}">${p.name}</button>`;
@@ -61,25 +89,32 @@ function lessonFor(p) {
   return focused[p.id]||[t.name,t.lesson,t.question,t.answer];
 }
 function todayView() {
-  const day=now(), plan=daily(day), upcoming=plan.find(item=>!item.review);
+  const day=now(), plan=state.plans[day] || [], upcoming=plan.find(item=>!item.review);
+  const dayNumber=Math.max(1,(Date.parse(day)-Date.parse(trackingStart))/86400000+1);
   const lessons = [...new Map((upcoming ? plan.filter(x=>!x.review).map(x=>lessonFor(byId[x.id])) : [lessonFor()]).map(lesson=>[lesson[0],lesson])).values()];
-  const done=plan.filter(x=>history(x.id).some(a=>a.date===day)).length;
+  const done=plan.filter(x=>solvedOn(x.id,day)).length;
   const total=problems.filter(p=>history(p.id).some(a=>a.result==='solo')).length;
-  return heading('NeetCode 150','Today’s practice',fmt(day,{weekday:'long',month:'long',day:'numeric'})+' · '+plan.length+' planned attempts')+`
+  return heading('NeetCode 150','Today’s practice',`Day ${dayNumber} · ${fmt(day,{weekday:'long',month:'long',day:'numeric'})} · ${plan.length} assigned problems`)+`
   <div class="grid"><div class="stack"><section class="panel lesson"><p class="kicker">Before you solve · ${upcoming?'10':'5'} min</p>${lessons.map(([title,lesson,question,answer])=>`<section class="concept"><h2>${title}</h2><p>${lesson}</p><p><strong>Quick check</strong> · ${question}</p><details><summary>Check your answer</summary><p>${answer}</p></details></section>`).join('')}<button class="primary" data-action="reveal" aria-expanded="${revealed}">${revealed?'Hide practice queue':'Reveal practice queue'}</button></section>
-  ${revealed?`<section class="panel"><h2>Practice queue</h2>${plan.map(x=>row(byId[x.id],history(x.id).some(a=>a.date===day)?'Logged':x.review?'Review':'New')).join('')||'<p>No attempts due today.</p>'}</section>`:''}
-  </div><aside class="panel"><h2>Study progress</h2><p>${done} / ${plan.length} planned attempts logged today</p><progress value="${total}" max="${problems.length}" aria-label="Problems solved solo"></progress><p class="muted">${total} / ${problems.length} problems solved solo</p><button data-view="progress">See what to work on</button></aside></div>`;
+  ${revealed?`<section class="panel"><h2>Practice queue</h2>${plan.map(x=>row(byId[x.id],solvedOn(x.id,day)?'Solved':x.carried?'Carried over':x.review?'Review':'New')).join('')||'<p>No attempts due today.</p>'}</section>`:''}
+  </div><aside class="panel"><h2>Study progress</h2><p>${done} / ${plan.length} assigned problems solved today</p><progress value="${total}" max="${problems.length}" aria-label="Problems solved solo"></progress><p class="muted">${total} / ${problems.length} problems solved solo</p><button data-view="progress">See what to work on</button></aside></div>`;
 }
 function calendarView() {
   const [year,m]=month.split('-').map(Number), first=new Date(year,m-1,1), days=new Date(year,m,0).getDate();
   const entries=state.attempts.filter(a=>a.date===selected);
+  const today=now(), missed=missedCount(selected,today);
+  const assignment=(selected>=trackingStart ? state.plans[selected] || [] : []).map(item=>{
+    const solved=solvedOn(item.id,selected);
+    return row(byId[item.id],solved?'Solved':selected<today?'Missed':item.carried?'Carried over':'To do');
+  }).join('');
   const cells=Array.from({length:days},(_,i)=>{
     const d=month+'-'+String(i+1).padStart(2,'0'), logged=state.attempts.some(a=>a.date===d);
-    return `<button data-date="${d}" class="${d===selected?'active':logged?'mark':''}" aria-pressed="${d===selected}" aria-label="${fmt(d)}${logged?', attempts logged':''}">${i+1}</button>`;
+    const unfinished=missedCount(d,today);
+    return `<button data-date="${d}" class="${unfinished?'missed':logged?'mark':''} ${d===selected?'active':''}" aria-pressed="${d===selected}" aria-label="${fmt(d)}${unfinished?`, ${unfinished} missed`:logged?', attempts logged':''}">${i+1}</button>`;
   }).join('');
   return heading('Practice history','Calendar','Pick a date to see what you practiced or log an extra attempt.')+`<div class="grid">
   <section class="panel"><div class="row spread"><h2>${first.toLocaleDateString('en-IN',{month:'long',year:'numeric'})}</h2><div class="row"><button data-month="-1" aria-label="Previous month">‹</button><button data-month="1" aria-label="Next month">›</button></div></div><div class="month">${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=>'<small>'+d+'</small>').join('')}${'<span></span>'.repeat(first.getDay())}${cells}</div></section>
-  <section class="panel"><h2>${fmt(selected)}</h2><p class="muted">${entries.filter(a=>['solo','hint'].includes(a.result)).length} solves · ${entries.length} attempts</p>${entries.sort((a,b)=>b.at-a.at).map(a=>row(byId[a.id],outcomes[a.result])).join('')||'<p>No attempts logged.</p>'}
+  <section class="panel"><h2>${fmt(selected)}</h2>${missed?`<p class="error">${missed} missed</p>`:''}${assignment?`<h3>Assigned practice</h3>${assignment}<h3>Attempt history</h3>`:''}<p class="muted">${entries.filter(a=>['solo','hint'].includes(a.result)).length} solves · ${entries.length} attempts</p>${entries.sort((a,b)=>b.at-a.at).map(a=>row(byId[a.id],outcomes[a.result])).join('')||'<p>No attempts logged.</p>'}
   ${selected<=now()?`<label for="extra">Log an extra attempt</label><select id="extra" class="full"><option value="">Choose a problem</option>${problems.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}</select>`:''}</section></div>`;
 }
 function roadmapView() {
@@ -121,14 +156,10 @@ function reminderView() {
   <details><summary>Use a calendar file instead</summary><p>The file fills in the daily event and its alert for you. Import it once in your calendar app.</p><label for="time">Study time (IST)</label><input id="time" type="time" required value="${esc(state.time)}"><button data-action="ics">Download calendar file (.ics)</button></details></section><section class="panel"><h2>Backups</h2><p class="muted">Export a copy of your planner or import an existing backup.</p><div class="row backup-actions"><button type="button" data-action="backup">Export backup</button><button type="button" data-action="import-backup">Import backup</button></div><input type="file" id="backup-file" accept="application/json,.json" hidden><p class="backup-status muted" id="backup-status" role="status"></p></section></div>`;
 }
 function render() {
+  renderedDay = now();
+  ensurePlans(renderedDay);
   document.querySelectorAll('nav button').forEach(b=>{b.classList.toggle('active',b.dataset.view===view);if(b.dataset.view===view)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
   app.innerHTML={today:todayView,calendar:calendarView,roadmap:roadmapView,progress:progressView,reminder:reminderView}[view]();
-}
-function refreshPlan() {
-  const day = now();
-  const completed = (state.plans[day] || []).filter(item => history(item.id).some(a=>a.date===day));
-  state.plans = {};
-  daily(day, completed);
 }
 function openProblem(id, day=now(), editIndex=-1, message='') {
   const p=byId[id], h=history(id), solved=h.filter(a=>a.result==='solo'||a.result==='hint');
@@ -170,7 +201,6 @@ function openProblem(id, day=now(), editIndex=-1, message='') {
     }
     if(button.dataset.confirm!==undefined){
       state.attempts.splice(Number(button.dataset.confirm),1);
-      refreshPlan();
       const persisted=save();
       render();openProblem(id,day,-1,persisted?'Attempt deleted.':'Attempt removed for this session.');
     }
@@ -179,7 +209,7 @@ function openProblem(id, day=now(), editIndex=-1, message='') {
     event.preventDefault();
     const f=new FormData(event.target);
     const attempt={id,date:f.get('date'),result:f.get('result'),blocker:f.get('blocker'),at:editing?.at??Date.now()};
-    if(editing){state.attempts[editIndex]=attempt;refreshPlan();}
+    if(editing)state.attempts[editIndex]=attempt;
     else state.attempts.push(attempt);
     const persisted=save();
     render();openProblem(id,f.get('date'),-1,persisted?(editing?'Changes saved.':'Attempt saved.'):'Attempt saved for this session.');
@@ -208,6 +238,18 @@ function reminder() {
   const lines=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//DSA Practice Planner//EN','CALSCALE:GREGORIAN','BEGIN:VTIMEZONE','TZID:Asia/Kolkata','BEGIN:STANDARD','DTSTART:19700101T000000','TZOFFSETFROM:+0530','TZOFFSETTO:+0530','TZNAME:IST','END:STANDARD','END:VTIMEZONE','BEGIN:VEVENT','UID:dsa-practice-planner-daily@planner.local','DTSTAMP:'+stamp,'DTSTART;TZID=Asia/Kolkata:'+day+'T'+start,'RRULE:FREQ=DAILY','DURATION:PT30M','SUMMARY:DSA practice','DESCRIPTION:Open today’s DSA practice plan.'+(target?'\\n'+target:''),...(target?['URL:'+target]:[]),'BEGIN:VALARM','ACTION:DISPLAY','TRIGGER:PT0M','DESCRIPTION:Open today’s DSA practice plan.','END:VALARM','END:VEVENT','END:VCALENDAR'];
   download('dsa-daily-reminder.ics',lines.join('\r\n')+'\r\n','text/calendar;charset=utf-8');
 }
+function refreshPracticeDay() {
+  if (app.hidden || dialog.open || renderedDay===now()) return;
+  if (selected===renderedDay) {
+    selected=now();
+    month=selected.slice(0,7);
+  }
+  revealed=false;
+  render();
+}
+setInterval(refreshPracticeDay,15000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshPracticeDay();});
+dialog.addEventListener('close',refreshPracticeDay);
 document.addEventListener('click',e=>{
   const b=e.target.closest('button'); if(!b)return;
   if(b.dataset.view){if(!app.hidden){view=b.dataset.view;render();}return;}
@@ -236,7 +278,7 @@ document.addEventListener('change',async e=>{
       const backup=JSON.parse(await e.target.files[0].text());
       if(!Array.isArray(backup.attempts)||!backup.notes||!backup.attempts.every(a=>byId[a.id]&&outcomes[a.result]&&/^\d{4}-\d{2}-\d{2}$/.test(a.date)&&Number.isFinite(a.at)&&(!a.blocker||blockers[a.blocker])))throw Error();
       const combined=new Map([...backup.attempts,...state.attempts].map(a=>[JSON.stringify([a.id,a.at]),a]));
-      state.attempts=[...combined.values()];state.notes={...backup.notes,...state.notes};state.plans={};const persisted=save();
+      state.attempts=[...combined.values()];state.notes={...backup.notes,...state.notes};const persisted=save();
       status.textContent=persisted?'Backup imported. Existing notes were kept.':'Backup imported for this session.';
     }catch{status.textContent='Couldn’t read this backup. Choose a planner JSON file.';}
     finally{e.target.value='';}
