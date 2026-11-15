@@ -1,14 +1,17 @@
 (() => {
   const panel = document.querySelector('#cloud');
-  const form = panel.querySelector('form');
+  const signIn = document.querySelector('#sign-in');
+  const signInStatus = document.querySelector('#sign-in-status');
+  const form = signIn.querySelector('form');
+  const workspace = document.querySelector('#workspace');
+  const loading = document.querySelector('#planner-loading');
   const account = panel.querySelector('#cloud-account');
   const status = panel.querySelector('#cloud-status');
   const signOut = panel.querySelector('#cloud-sign-out');
   const importLocal = panel.querySelector('#cloud-import');
   const syncNow = panel.querySelector('#cloud-sync');
   if (!window.supabase) {
-    form.hidden = true;
-    status.textContent = 'Cloud sync is unavailable. You can still use this browser.';
+    signInStatus.textContent = 'Sign-in is unavailable. Reload the page to try again.';
     return;
   }
 
@@ -44,7 +47,7 @@
     };
   }
 
-  let userId = null;
+  let userId;
   let baseline = empty();
   let timer;
   let busy = false;
@@ -104,6 +107,7 @@
           baseline = merged;
           state = updated;
           app.hidden = false;
+          loading.hidden = true;
           if (changed) render();
         } else {
           // Keep the dialog's attempt indexes stable. Rebase when it closes.
@@ -121,7 +125,9 @@
       if (userId === owner) {
         if (app.hidden) {
           app.hidden = false;
+          loading.hidden = true;
           render();
+          panel.open = true;
         }
         status.textContent = 'Couldn’t sync. Your changes are still on this device.';
       }
@@ -139,25 +145,29 @@
     userId = next;
     baseline = empty();
     state = empty();
-    app.hidden = false;
+    app.hidden = true;
+    app.replaceChildren();
+    loading.hidden = !userId;
     importLocal.disabled = true;
+    workspace.hidden = !userId;
+    signIn.hidden = Boolean(userId);
+    form.hidden = Boolean(userId);
+    panel.open = false;
+    account.textContent = session?.user.email ?? '';
+    status.textContent = userId ? 'Loading your progress…' : '';
+    signInStatus.textContent = '';
+    view = 'today';
+    selected = now();
+    month = selected.slice(0, 7);
+    revealed = false;
+    query = '';
     if (userId) {
       try {
         const cached = JSON.parse(localStorage.getItem(cacheKey(userId)) || 'null');
         if (cached) ({ state, baseline } = cached);
       } catch {}
-      app.hidden = true;
       schedule(0);
-    } else {
-      try { Object.assign(state, JSON.parse(localStorage.getItem(key) || '{}')); } catch {}
-      render();
     }
-    form.hidden = Boolean(userId);
-    signOut.hidden = !userId;
-    importLocal.hidden = !userId;
-    syncNow.hidden = !userId;
-    account.textContent = session?.user.email ?? '';
-    status.textContent = userId ? 'Loading cloud progress…' : 'Signed out. Progress is saved on this browser.';
   }
 
   client.auth.onAuthStateChange((_event, session) => useSession(session));
@@ -166,13 +176,13 @@
     const button = form.querySelector('button');
     const fields = new FormData(form);
     button.disabled = true;
-    status.textContent = 'Signing in…';
+    signInStatus.textContent = 'Signing in…';
     try {
       const { error } = await client.auth.signInWithPassword({ email: fields.get('email'), password: fields.get('password') });
       if (error) throw error;
       form.reset();
     } catch (error) {
-      status.textContent = error.message || 'Couldn’t sign in.';
+      signInStatus.textContent = error.message || 'Couldn’t sign in.';
     } finally {
       button.disabled = false;
     }

@@ -15,7 +15,6 @@ function addDays(day, amount) {
 const fmt = (day, options={month:'short',day:'numeric'}) => new Date(day+'T12:00:00').toLocaleDateString('en-IN',options);
 const now = () => dateKey();
 let state = {attempts:[], notes:{}, plans:{}, time:'19:00'};
-try { Object.assign(state, JSON.parse(localStorage.getItem(key)||'{}')); } catch {}
 let view='today', selected=now(), month=selected.slice(0,7), revealed=false, query='';
 function save() {
   if (window.saveCloudPlanner?.()) return true;
@@ -243,4 +242,3 @@ document.addEventListener('change',async e=>{
     finally{e.target.value='';}
   }
 });
-render();

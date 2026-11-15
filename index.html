@@ -1,23 +1,38 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="Concept lessons, daily practice and spaced reviews for NeetCode 150."><title>DSA Practice Planner</title>
 <link rel="stylesheet" href="./styles.css"></head><body>
-<header><div class="chrome"><div class="brand"><b>{ }</b>DSA Practice Planner</div><nav aria-label="Planner"><button data-view="today">Today</button><button data-view="calendar">Calendar</button><button data-view="roadmap">Roadmap</button><button data-view="progress">Progress</button><button data-view="reminder">Reminder</button></nav></div></header>
-<details id="cloud" class="panel">
-  <summary>Cloud sync</summary>
-  <p id="cloud-status" class="muted" role="status">Signed out. Progress is saved on this browser.</p>
-  <form>
-    <div class="row">
+<main id="sign-in" class="sign-in">
+  <section class="panel sign-in-card" aria-labelledby="sign-in-title">
+    <div class="brand"><b aria-hidden="true">{ }</b>DSA Practice Planner</div>
+    <h1 id="sign-in-title">Sign in</h1>
+    <form method="post" hidden>
     <label>Email <input name="email" type="email" autocomplete="username" required></label>
     <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
-    <button>Sign in</button>
-    </div>
-  </form>
-  <p id="cloud-account"></p>
-  <button id="cloud-sync" type="button" hidden>Sync now</button>
-  <button id="cloud-import" type="button" hidden disabled>Import progress from this browser</button>
-  <button id="cloud-sign-out" type="button" hidden>Sign out</button>
-</details>
-<main id="app"></main><dialog id="problem" aria-labelledby="problem-title"></dialog><p id="storage-error" role="alert" class="error"></p>
+    <button class="primary" type="submit">Sign in</button>
+    </form>
+    <p id="sign-in-status" role="status">Checking your session…</p>
+  </section>
+</main>
+<div id="workspace" hidden>
+  <header><div class="chrome">
+    <div class="brand"><b aria-hidden="true">{ }</b>DSA Practice Planner</div>
+    <nav aria-label="Planner"><button data-view="today">Today</button><button data-view="calendar">Calendar</button><button data-view="roadmap">Roadmap</button><button data-view="progress">Progress</button><button data-view="reminder">Reminder</button></nav>
+    <details id="cloud">
+      <summary>Account</summary>
+      <div class="panel account-panel">
+        <p id="cloud-account"></p>
+        <p id="cloud-status" class="muted" role="status"></p>
+        <button id="cloud-sync" type="button">Sync now</button>
+        <button id="cloud-import" type="button" disabled>Import progress from this browser</button>
+        <button id="cloud-sign-out" type="button">Sign out</button>
+      </div>
+    </details>
+  </div></header>
+  <p id="planner-loading" class="planner-loading muted" role="status">Loading your progress…</p>
+  <main id="app" hidden></main>
+  <dialog id="problem" aria-labelledby="problem-title"></dialog>
+  <p id="storage-error" role="alert" class="error"></p>
+</div>
 <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.99.3"></script>
 <script defer src="./catalog.js"></script>
 <script defer src="./app.js"></script>
